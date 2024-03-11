@@ -16,5 +16,7 @@ Base = declarative_base()
 
 
 async def get_session():
-    async with async_session() as session:
-        return session
+    return async_session
+# async def get_session():
+#     async with async_session() as session:
+#         yield session

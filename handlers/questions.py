@@ -1,13 +1,23 @@
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, desc
+from pydantic import BaseModel
 
 from keyboards.inlne_wb import check_button_follow
 from aiohttp import ClientSession
-from bd.db import get_session
 from bd.models import User
 
 router = Router()
+
+
+class UserSchema(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True
 
 
 async def get_data_from_website(article):
@@ -47,9 +57,16 @@ async def get_data_from_api(message: Message):
 
 
 @router.message(F.text.lower() == "получить информацию из бд")
-async def get_bd(message: Message):
+async def get_bd(message: Message, session: AsyncSession):
+
+    db_query = select(User).order_by(desc(User.id)).limit(5)
+    list_query = await session.execute(statement=db_query)
+    results = list_query.fetchall()
+
+    formatted_results = [UserSchema.from_orm(user) for user in results]
+
     await message.answer(
-        message.text,
+        "\n".join(formatted_results),
         reply_markup=check_button_follow()
     )
 
@@ -63,7 +80,7 @@ async def stop_notification(message: Message):
 
 
 @router.message(F.text.lower())
-async def get_data(message: Message):
+async def get_data(message: Message, session: AsyncSession):
     data = await get_data_from_website(message.text)
     # await message.answer(
     #     data.data,
@@ -79,11 +96,5 @@ async def get_data(message: Message):
         reply_markup=check_button_follow()
     )
 
-    async with get_session() as session:
-        user = User(
-            id=message.from_user.id,
-            name=data['data']['products'][0]['name']
-        )
-        session.add(user)
-
-        await session.commit
+    await session.merge(User(id=message.from_user.id, name=data['data']['products'][0]['name']))
+    await session.commit()
